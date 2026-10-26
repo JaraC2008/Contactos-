@@ -388,10 +388,282 @@ def configurar_lista(areas, configuracion):
 # =============================================================================
 #                          3. REGISTRAR CONTACTOS
 # =============================================================================
+def validar_telefono(texto):
+    """Valida un número natural de 5 a 12 dígitos (no inicia con 0).
+    Salida: el número como entero, o None si no es válido."""
+    if texto.isdigit() and 5 <= len(texto) <= 12 and texto[0] != "0":
+        return int(texto)
+    return None
+
+
+def validar_correo(texto):
+    """Valida el formato parte1@parte2 con una expresión regular:
+    [^\\s@]+ significa 'uno o más caracteres que no sean espacio ni @'."""
+    return re.fullmatch(r"[^\s@]+@[^\s@]+", texto) is not None
+
+
+def validar_fecha(texto):
+    """Valida una fecha dd/mm/aaaa usando el módulo datetime.
+    - Vacío o "0": no se tiene la fecha, retorna 0.
+    - Año 0000: no se conoce el año; se valida día y mes con un año
+      bisiesto (2000) para aceptar también el 29/02.
+    - Con año: no puede ser una fecha futura.
+    Salida: la fecha (str), 0, o None si no es válida."""
+    if texto == "" or texto == "0":
+        return 0
+    partes = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", texto)
+    if partes is None:
+        return None
+    dia, mes, anno = int(partes[1]), int(partes[2]), int(partes[3])
+    try:
+        fecha = datetime.date(anno if anno != 0 else 2000, mes, dia)
+    except ValueError:              # día o mes fuera de rango
+        return None
+    if anno != 0 and fecha > datetime.date.today():
+        return None
+    return texto
+
+
+def texto_fecha(fecha):
+    """Fecha para desplegar: "" cuando el dato es 0 (no se tiene)."""
+    return "" if fecha == 0 else fecha
+
+
+def leer_correo(nombre_dato, actual=None):
+    """Pide un correo válido. En modificación <Enter> conserva el actual."""
+    while True:
+        texto = input(etiqueta(nombre_dato)).strip()
+        if texto == "" and actual is not None:
+            return actual
+        if validar_correo(texto):
+            return texto
+        mostrar_error("EL CORREO DEBE TENER EL FORMATO parte1@parte2 "
+                      "SIN ESPACIOS")
+
+
+def leer_fecha(nombre_dato, actual=None):
+    """Pide una fecha dd/mm/aaaa (o vacío si no se tiene).
+    En modificación <Enter> conserva el valor actual."""
+    while True:
+        texto = input(etiqueta(nombre_dato)).strip()
+        if texto == "" and actual is not None:
+            return actual
+        fecha = validar_fecha(texto)
+        if fecha is not None:
+            return fecha
+        mostrar_error("FECHA INVÁLIDA: USE dd/mm/aaaa (aaaa PUEDE SER 0000)"
+                      " O DÉJELA EN BLANCO")
+
+
+def buscar_contacto(contactos, telefono, area):
+    """Busca un contacto por su teléfono (número + área).
+    Salida: índice en la lista contactos, o -1 si no existe."""
+    for i in range(len(contactos)):
+        if contactos[i][TEL] == telefono and contactos[i][AREA] == area:
+            return i
+    return -1
+
+
+def leer_telefono(areas, configuracion):
+    """Pide las dos partes del teléfono: número y área.
+    Si se da <Enter> en el área se usa el área por omisión.
+    Salida: tupla (telefono, area), o None si se digita C en el número."""
+    while True:
+        texto = input(etiqueta("Teléfono")).strip()
+        if texto.upper() == "C":
+            return None
+        telefono = validar_telefono(texto)
+        if telefono is not None:
+            break
+        mostrar_error("EL TELÉFONO DEBE SER UN NÚMERO NATURAL DE 5 A 12 "
+                      "DÍGITOS")
+    area_omision = configuracion[0]
+    texto_omision = f" [{area_omision}]" if area_omision is not None else ""
+    while True:
+        texto = input(etiqueta("Área" + texto_omision)).strip()
+        if texto == "" and area_omision is not None:
+            codigo = area_omision
+        else:
+            codigo = validar_codigo_area(texto)
+            if codigo is None:
+                mostrar_error("EL ÁREA DEBE SER UN NÚMERO ENTERO ENTRE 1 Y "
+                              "999")
+                continue
+        if buscar_area(areas, codigo) != -1:
+            break
+        mostrar_error("ESTA ÁREA NO ESTÁ REGISTRADA")
+    print(etiqueta("") + nombre_area(areas, codigo))
+    return (telefono, codigo)
+
+
+def leer_contacto_registrado(contactos, areas, configuracion,
+                             mensaje_no_existe):
+    """Pide un teléfono hasta que corresponda a un contacto registrado.
+    Salida: índice del contacto, o -1 si el usuario cancela."""
+    while True:
+        telefono = leer_telefono(areas, configuracion)
+        if telefono is None:
+            return -1
+        indice = buscar_contacto(contactos, telefono[0], telefono[1])
+        if indice != -1:
+            return indice
+        mostrar_error(mensaje_no_existe)
+
+
+def mostrar_datos_contacto(contacto):
+    """Despliega los datos de un contacto (excepto teléfono y área)."""
+    print(etiqueta("Tipo teléfono") + contacto[TIPO] + " - " +
+          descripcion_tipo(contacto[TIPO]))
+    print(etiqueta("Nombre contacto") + contacto[NOMBRE])
+    print(etiqueta("Correo electrónico") + contacto[CORREO])
+    print(etiqueta("Dirección física") + contacto[DIRECCION])
+    print(etiqueta("Fecha de nacimiento") + texto_fecha(contacto[FECHA]))
+    print(etiqueta("Pasatiempos") + contacto[PASATIEMPOS])
+    print(etiqueta("Notas") + contacto[NOTAS])
+
+
+def grupos_de_contacto(grupos, contactos_por_grupo, telefono, area):
+    """Retorna la lista de nombres de grupos a los que pertenece un
+    contacto (se usa para la integridad referencial y para los filtros)."""
+    resultado = []
+    for i in range(len(grupos)):
+        if (telefono, area) in contactos_por_grupo[i]:
+            resultado.append(grupos[i])
+    return resultado
+
+
+def agregar_contactos(contactos, areas, configuracion):
+    """Opción 3.1: agrega un contacto con teléfono (número + área) único."""
+    while True:
+        mostrar_encabezado("REGISTRAR CONTACTOS: AGREGAR")
+        print("  (Digite C en Teléfono para regresar al menú anterior)\n")
+        while True:
+            telefono = leer_telefono(areas, configuracion)
+            if telefono is None:
+                return
+            if buscar_contacto(contactos, telefono[0], telefono[1]) == -1:
+                break
+            mostrar_error("ESTE TELÉFONO YA ESTÁ REGISTRADO, NO SE PUEDE "
+                          "AGREGAR")
+        tipo = leer_tipo_telefono(
+            f"Tipo teléfono (M,C,T,O) [{configuracion[1]}]", configuracion[1])
+        nombre = leer_texto("Nombre contacto", 1, 50)
+        correo = leer_correo("Correo electrónico")
+        direccion = leer_texto("Dirección física", 0, 80)
+        fecha = leer_fecha("Fecha de nacimiento")
+        pasatiempos = leer_texto("Pasatiempos", 0, 60)
+        notas = leer_texto("Notas", 0, 60)
+        if leer_opcion_aceptar_cancelar():
+            contactos.append([telefono[0], telefono[1], tipo, nombre, correo,
+                              direccion, fecha, pasatiempos, notas])
+            mostrar_mensaje("CONTACTO AGREGADO")
+
+
+def consultar_contactos(contactos, areas, configuracion):
+    """Opción 3.2: despliega los datos de un contacto (sin cambiarlos)."""
+    while True:
+        mostrar_encabezado("REGISTRAR CONTACTOS: CONSULTAR")
+        print("  (Digite C en Teléfono para regresar al menú anterior)\n")
+        indice = leer_contacto_registrado(
+            contactos, areas, configuracion,
+            "ESTE CONTACTO NO ESTÁ REGISTRADO, NO SE PUEDE CONSULTAR")
+        if indice == -1:
+            return
+        mostrar_datos_contacto(contactos[indice])
+        leer_aceptar()
+
+
+def modificar_contactos(contactos, areas, configuracion):
+    """Opción 3.3: muestra cada dato y lee su nuevo valor (<Enter> lo deja
+    igual). El teléfono y el área no se modifican porque identifican al
+    contacto. Los cambios se aplican solo si el usuario acepta."""
+    while True:
+        mostrar_encabezado("REGISTRAR CONTACTOS: MODIFICAR")
+        print("  (Digite C en Teléfono para regresar al menú anterior)")
+        print("  (Dé <Enter> en MODIFICACIÓN para dejar el dato igual)\n")
+        indice = leer_contacto_registrado(
+            contactos, areas, configuracion,
+            "ESTE CONTACTO NO ESTÁ REGISTRADO, NO SE PUEDE MODIFICAR")
+        if indice == -1:
+            return
+        contacto = contactos[indice]
+        print(etiqueta("Tipo teléfono") + contacto[TIPO])
+        print(etiqueta("Nombre contacto") + contacto[NOMBRE])
+        nombre = leer_texto("MODIFICACIÓN", 1, 50, contacto[NOMBRE])
+        print(etiqueta("Correo electrónico") + contacto[CORREO])
+        correo = leer_correo("MODIFICACIÓN", contacto[CORREO])
+        print(etiqueta("Dirección física") + contacto[DIRECCION])
+        direccion = leer_texto("MODIFICACIÓN", 0, 80, contacto[DIRECCION])
+        print(etiqueta("Fecha de nacimiento") + texto_fecha(contacto[FECHA]))
+        fecha = leer_fecha("MODIFICACIÓN", contacto[FECHA])
+        print(etiqueta("Pasatiempos") + contacto[PASATIEMPOS])
+        pasatiempos = leer_texto("MODIFICACIÓN", 0, 60, contacto[PASATIEMPOS])
+        print(etiqueta("Notas") + contacto[NOTAS])
+        notas = leer_texto("MODIFICACIÓN", 0, 60, contacto[NOTAS])
+        if leer_opcion_aceptar_cancelar():
+            contacto[NOMBRE] = nombre
+            contacto[CORREO] = correo
+            contacto[DIRECCION] = direccion
+            contacto[FECHA] = fecha
+            contacto[PASATIEMPOS] = pasatiempos
+            contacto[NOTAS] = notas
+            mostrar_mensaje("CONTACTO MODIFICADO")
+
+
+def eliminar_contactos(contactos, areas, configuracion, grupos,
+                       contactos_por_grupo):
+    """Opción 3.4: elimina un contacto. Por integridad referencial no se
+    permite eliminar un contacto que pertenezca a algún grupo."""
+    while True:
+        mostrar_encabezado("REGISTRAR CONTACTOS: ELIMINAR")
+        print("  (Digite C en Teléfono para regresar al menú anterior)\n")
+        indice = leer_contacto_registrado(
+            contactos, areas, configuracion,
+            "ESTE CONTACTO NO ESTÁ REGISTRADO, NO SE PUEDE ELIMINAR")
+        if indice == -1:
+            return
+        contacto = contactos[indice]
+        mostrar_datos_contacto(contacto)
+        if not leer_opcion_aceptar_cancelar():
+            continue
+        sus_grupos = grupos_de_contacto(grupos, contactos_por_grupo,
+                                        contacto[TEL], contacto[AREA])
+        if sus_grupos:
+            mostrar_mensaje("ESTE CONTACTO PERTENECE A LOS GRUPOS: " +
+                            ", ".join(sus_grupos) + ". NO SE PUEDE ELIMINAR "
+                            "(PRIMERO ELIMÍNELO DE ESOS GRUPOS)")
+        elif confirmar_eliminacion():
+            del contactos[indice]
+            mostrar_mensaje("CONTACTO ELIMINADO")
+
+
 def registrar_contactos(contactos, areas, configuracion, grupos,
                         contactos_por_grupo):
-    """(Caja negra: pendiente de desarrollo)."""
-    mostrar_mensaje("FUNCIONALIDAD EN DESARROLLO")
+    """Opción 3 del menú principal: submenú de mantenimiento de contactos.
+    Requiere que antes se haya hecho la configuración (opción 2)."""
+    if configuracion[0] is None:
+        mostrar_mensaje("ANTES DE REGISTRAR CONTACTOS DEBE HACER LA "
+                        "CONFIGURACIÓN DE LA LISTA (OPCIÓN 2)")
+        return
+    while True:
+        opcion = mostrar_menu("REGISTRAR CONTACTOS", [
+            "Agregar contactos", "Consultar contactos", "Modificar contactos",
+            "Eliminar contactos"])
+        match opcion:
+            case "1":
+                agregar_contactos(contactos, areas, configuracion)
+            case "2":
+                consultar_contactos(contactos, areas, configuracion)
+            case "3":
+                modificar_contactos(contactos, areas, configuracion)
+            case "4":
+                eliminar_contactos(contactos, areas, configuracion, grupos,
+                                   contactos_por_grupo)
+            case "0":
+                return
+            case _:
+                mostrar_error("ESTA OPCIÓN NO EXISTE EN EL MENÚ")
+                pausar()
 
 
 # =============================================================================
