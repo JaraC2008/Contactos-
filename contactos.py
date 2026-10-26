@@ -669,10 +669,199 @@ def registrar_contactos(contactos, areas, configuracion, grupos,
 # =============================================================================
 #                     4. ADMINISTRAR GRUPOS DE CONTACTOS
 # =============================================================================
+def buscar_grupo(grupos, nombre):
+    """Busca un grupo por nombre sin importar mayúsculas/minúsculas.
+    Salida: índice del grupo, o -1 si no existe."""
+    for i in range(len(grupos)):
+        if grupos[i].upper() == nombre.upper():
+            return i
+    return -1
+
+
+def leer_nombre_grupo(nombre_dato):
+    """Pide un nombre de grupo de 1 a 40 caracteres (se guarda en
+    mayúscula). Salida: el nombre, o None si el usuario digita C."""
+    while True:
+        nombre = input(etiqueta(nombre_dato)).strip().upper()
+        if nombre == "C":
+            return None
+        if 1 <= len(nombre) <= 40:
+            return nombre
+        mostrar_error("EL NOMBRE DEL GRUPO DEBE TENER ENTRE 1 Y 40 "
+                      "CARACTERES")
+
+
+def leer_grupo_registrado(grupos, mensaje_no_existe):
+    """Pide un nombre de grupo hasta que exista.
+    Salida: índice del grupo, o -1 si el usuario cancela."""
+    while True:
+        nombre = leer_nombre_grupo("Nombre del grupo")
+        if nombre is None:
+            return -1
+        indice = buscar_grupo(grupos, nombre)
+        if indice != -1:
+            return indice
+        mostrar_error(mensaje_no_existe)
+
+
+def agregar_grupos(grupos, contactos_por_grupo):
+    """Opción 4.1: agrega un grupo nuevo; para mantener la relación 1:1
+    también agrega una lista vacía en contactos_por_grupo."""
+    while True:
+        mostrar_encabezado("ADMINISTRAR GRUPOS DE CONTACTOS: AGREGAR GRUPOS")
+        print("  (Digite C en Nombre del grupo para regresar)\n")
+        while True:
+            nombre = leer_nombre_grupo("Nombre del grupo")
+            if nombre is None:
+                return
+            if buscar_grupo(grupos, nombre) == -1:
+                break
+            mostrar_error("ESTE GRUPO YA ESTÁ REGISTRADO, NO SE PUEDE AGREGAR")
+        if leer_opcion_aceptar_cancelar():
+            grupos.append(nombre)
+            contactos_por_grupo.append([])
+            mostrar_mensaje("GRUPO AGREGADO")
+
+
+def agregar_contactos_grupo(grupos, contactos_por_grupo, contactos, areas,
+                            configuracion):
+    """Opción 4.2: agrega a un grupo un contacto que exista en la lista
+    contactos (integridad referencial) y que no esté ya en el grupo."""
+    while True:
+        mostrar_encabezado("ADMINISTRAR GRUPOS DE CONTACTOS: "
+                           "AGREGAR CONTACTOS A LOS GRUPOS")
+        print("  (Digite C en Nombre del grupo para regresar)\n")
+        indice_grupo = leer_grupo_registrado(
+            grupos, "ESTE GRUPO NO EXISTE, NO PUEDE AGREGARLE CONTACTOS")
+        if indice_grupo == -1:
+            return
+        while True:
+            telefono = leer_telefono(areas, configuracion)
+            if telefono is None:                   # C: vuelve a pedir grupo
+                break
+            indice = buscar_contacto(contactos, telefono[0], telefono[1])
+            if indice == -1:
+                mostrar_error("ESTE CONTACTO NO EXISTE, NO PUEDE AGREGARLO AL "
+                              "GRUPO")
+            elif telefono in contactos_por_grupo[indice_grupo]:
+                mostrar_error("ESTE CONTACTO YA ESTÁ EN EL GRUPO")
+            else:
+                print(etiqueta("Nombre contacto") + contactos[indice][NOMBRE])
+                if leer_opcion_aceptar_cancelar():
+                    contactos_por_grupo[indice_grupo].append(telefono)
+                    mostrar_mensaje("CONTACTO AGREGADO AL GRUPO")
+                break
+
+
+def modificar_grupos(grupos, contactos_por_grupo):
+    """Opción 4.3: cambia el nombre de un grupo. Si el nuevo nombre ya
+    existe, los contactos del grupo se pasan a ese grupo (sin repetir) y
+    el grupo modificado se borra de grupos y contactos_por_grupo."""
+    while True:
+        mostrar_encabezado("ADMINISTRAR GRUPOS DE CONTACTOS: MODIFICAR GRUPOS")
+        print("  (Digite C en Nombre del grupo para regresar)")
+        print("  (Dé <Enter> en MODIFICACIÓN para dejar el nombre igual)\n")
+        indice = leer_grupo_registrado(
+            grupos, "GRUPO NO ESTÁ REGISTRADO, NO SE PUEDE MODIFICAR")
+        if indice == -1:
+            return
+        nuevo = input(etiqueta("MODIFICACIÓN")).strip().upper()
+        while len(nuevo) > 40:
+            mostrar_error("EL NOMBRE DEL GRUPO DEBE TENER ENTRE 1 Y 40 "
+                          "CARACTERES")
+            nuevo = input(etiqueta("MODIFICACIÓN")).strip().upper()
+        if nuevo == "":
+            nuevo = grupos[indice]
+            print(etiqueta("") + nuevo)
+        destino = buscar_grupo(grupos, nuevo)
+        if destino != -1 and destino != indice:
+            mostrar_error("GRUPO YA EXISTE, EN CASO DE ACEPTAR LA OPERACIÓN "
+                          "LOS CONTACTOS SE LE AGREGARÁN")
+        if not leer_opcion_aceptar_cancelar() or destino == indice:
+            continue
+        if destino == -1:                          # nombre nuevo: renombrar
+            grupos[indice] = nuevo
+        else:                                      # unir con grupo existente
+            for telefono in contactos_por_grupo[indice]:
+                if telefono not in contactos_por_grupo[destino]:
+                    contactos_por_grupo[destino].append(telefono)
+            del grupos[indice]
+            del contactos_por_grupo[indice]
+        mostrar_mensaje("GRUPO MODIFICADO")
+
+
+def eliminar_grupos(grupos, contactos_por_grupo):
+    """Opción 4.4: elimina un grupo y su lista de contactos (ambas listas,
+    para mantener la relación 1:1). Pide confirmación."""
+    while True:
+        mostrar_encabezado("ADMINISTRAR GRUPOS DE CONTACTOS: ELIMINAR GRUPOS")
+        print("  (Digite C en Nombre del grupo para regresar)\n")
+        indice = leer_grupo_registrado(
+            grupos, "ESTE GRUPO NO ESTÁ REGISTRADO, NO SE PUEDE ELIMINAR")
+        if indice == -1:
+            return
+        print(etiqueta("Contactos en el grupo") +
+              str(len(contactos_por_grupo[indice])))
+        if leer_opcion_aceptar_cancelar() and confirmar_eliminacion():
+            del grupos[indice]
+            del contactos_por_grupo[indice]
+            mostrar_mensaje("GRUPO ELIMINADO")
+
+
+def eliminar_contactos_grupo(grupos, contactos_por_grupo, contactos, areas,
+                             configuracion):
+    """Opción 4.5: elimina un contacto de un grupo (no de la lista
+    contactos). Pide confirmación."""
+    while True:
+        mostrar_encabezado("ADMINISTRAR GRUPOS DE CONTACTOS: "
+                           "ELIMINAR CONTACTOS DE LOS GRUPOS")
+        print("  (Digite C en Nombre del grupo para regresar)\n")
+        indice_grupo = leer_grupo_registrado(
+            grupos, "ESTE GRUPO NO EXISTE, NO PUEDE ELIMINARLE CONTACTOS")
+        if indice_grupo == -1:
+            return
+        while True:
+            telefono = leer_telefono(areas, configuracion)
+            if telefono is None:
+                break
+            if telefono not in contactos_por_grupo[indice_grupo]:
+                mostrar_error("ESTE CONTACTO NO EXISTE EN EL GRUPO, NO PUEDE "
+                              "ELIMINARLO")
+                continue
+            indice = buscar_contacto(contactos, telefono[0], telefono[1])
+            print(etiqueta("Nombre contacto") + contactos[indice][NOMBRE])
+            if leer_opcion_aceptar_cancelar() and confirmar_eliminacion():
+                contactos_por_grupo[indice_grupo].remove(telefono)
+                mostrar_mensaje("CONTACTO ELIMINADO DEL GRUPO")
+            break
+
+
 def administrar_grupos(grupos, contactos_por_grupo, contactos, areas,
                        configuracion):
-    """(Caja negra: pendiente de desarrollo)."""
-    mostrar_mensaje("FUNCIONALIDAD EN DESARROLLO")
+    """Opción 4 del menú principal: submenú de grupos de contactos."""
+    while True:
+        opcion = mostrar_menu("ADMINISTRAR GRUPOS DE CONTACTOS", [
+            "Agregar grupos", "Agregar contactos a los grupos",
+            "Modificar grupos", "Eliminar grupos",
+            "Eliminar contactos de los grupos"])
+        match opcion:
+            case "1":
+                agregar_grupos(grupos, contactos_por_grupo)
+            case "2":
+                agregar_contactos_grupo(grupos, contactos_por_grupo,
+                                        contactos, areas, configuracion)
+            case "3":
+                modificar_grupos(grupos, contactos_por_grupo)
+            case "4":
+                eliminar_grupos(grupos, contactos_por_grupo)
+            case "5":
+                eliminar_contactos_grupo(grupos, contactos_por_grupo,
+                                         contactos, areas, configuracion)
+            case "0":
+                return
+            case _:
+                mostrar_error("ESTA OPCIÓN NO EXISTE EN EL MENÚ")
+                pausar()
 
 
 # =============================================================================
