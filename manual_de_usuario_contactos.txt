@@ -1,0 +1,79 @@
+MANUAL DE USUARIO - LISTA DIGITAL DE CONTACTOS (versión 1.0)
+
+1. INICIO DEL PROGRAMA
+   Ejecute contactos.py con Python 3.14 o superior. Aparece el menú
+   principal. Digite el número de la opción y presione <Enter>.
+   El programa inicia con datos de ejemplo (áreas, contactos y grupos).
+
+2. REGLAS GENERALES DE LAS PANTALLAS
+   - Los datos se piden en el orden en que aparecen en la pantalla.
+   - Digite C en el PRIMER dato de una pantalla para regresar al menú
+     anterior.
+   - Al final de cada operación: A = ACEPTAR (se guardan los cambios),
+     C = CANCELAR (no se cambia nada).
+   - En las modificaciones, dar solo <Enter> deja el dato como estaba.
+   - Antes de eliminar se pide confirmar con SI o NO.
+   - Si un dato no es válido aparece un mensaje entre *** y se vuelve a
+     pedir el dato.
+
+3. OPCIÓN 1: REGISTRAR ÁREAS
+   Submenú: 1 Agregar, 2 Consultar, 3 Modificar, 4 Eliminar, 0 Fin.
+   - Área: número entero de 1 a 999 (ej. 506 = Costa Rica). No se repite.
+   - Nombre del área: de 1 a 40 caracteres.
+   - No se puede eliminar un área que tenga contactos o que sea el área
+     por omisión de la configuración.
+
+4. OPCIÓN 2: CONFIGURACIÓN DE LA LISTA DE CONTACTOS
+   Defina el área por omisión (debe estar registrada) y el tipo de
+   teléfono por omisión (M Móvil, C Casa, T Trabajo, O Otro).
+   Es OBLIGATORIO hacer esta configuración antes de registrar contactos.
+   Cuando al registrar un contacto deja en blanco el área o el tipo, se
+   usan estos valores (se muestran entre corchetes, ej. Área [506]).
+
+5. OPCIÓN 3: REGISTRAR CONTACTOS
+   Submenú: 1 Agregar, 2 Consultar, 3 Modificar, 4 Eliminar, 0 Fin.
+   El contacto se identifica por su TELÉFONO = número + área.
+   - Teléfono: número de 5 a 12 dígitos que no inicia con 0.
+   - Tipo teléfono: M, C, T u O.
+   - Nombre contacto: de 1 a 50 caracteres.
+   - Correo electrónico: formato parte1@parte2, sin espacios.
+   - Dirección física: de 0 a 80 caracteres.
+   - Fecha de nacimiento: dd/mm/aaaa. Si no sabe el año use 0000
+     (ej. 15/08/0000). Si no tiene la fecha déjela en blanco.
+     No se aceptan fechas inexistentes (31/02/2001) ni futuras.
+   - Pasatiempos y Notas: de 0 a 60 caracteres.
+   En Modificar no se cambian el teléfono ni el área (identifican al
+   contacto). No se puede eliminar un contacto que esté en algún grupo:
+   primero quítelo del grupo (opción 4.5).
+
+6. OPCIÓN 4: ADMINISTRAR GRUPOS DE CONTACTOS
+   1 Agregar grupos: nombre de 1 a 40 caracteres, no se repite (se
+     guarda en mayúscula).
+   2 Agregar contactos a los grupos: digite el grupo y el teléfono de un
+     contacto registrado. Un contacto no se repite en un grupo.
+   3 Modificar grupos: cambia el nombre. Si el nuevo nombre ya existe,
+     los contactos se pasan a ese grupo (sin repetir) y el grupo anterior
+     se elimina.
+   4 Eliminar grupos: borra el grupo y su lista de contactos (los
+     contactos siguen existiendo en la lista de contactos).
+   5 Eliminar contactos de los grupos: quita un contacto de un grupo.
+
+7. OPCIÓN 5: LISTA DE CONTACTOS (PDF)
+   Digite los filtros: Nombre, Teléfono, Área, Fecha de nacimiento,
+   Pasatiempos y Grupo. Filtro vacío = cualquier valor. No importan
+   mayúsculas ni minúsculas. Sin % se busca el valor exacto.
+   Comodín %: reemplaza cero o más caracteres. Ejemplos:
+     %castillo%     contiene "castillo"
+     castillo%      empieza con "castillo"
+     %castillo      termina con "castillo"
+     william%mata   empieza con "william" y termina con "mata"
+   A = emite el listado en un archivo PDF (lista_contactos_fecha_hora.pdf)
+   en la carpeta del programa y lo abre. C = limpia los filtros.
+   Digite solo C en Nombre contacto para regresar al menú.
+
+8. OPCIÓN 6: AYUDA   Muestra este manual.
+9. OPCIÓN 7: ACERCA DE   Muestra nombre, versión, fecha y autor.
+10. OPCIÓN 0: FIN   Termina el programa.
+
+NOTA: los datos se mantienen mientras el programa está en ejecución; al
+salir se pierden los cambios (el programa no usa archivos de datos).

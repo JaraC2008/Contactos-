@@ -1118,14 +1118,50 @@ def lista_contactos(contactos, areas, grupos, contactos_por_grupo):
 # =============================================================================
 #                          6. AYUDA  /  7. ACERCA DE
 # =============================================================================
+MANUAL_TXT = "manual_de_usuario_contactos.txt"
+MANUAL_PDF = "manual_de_usuario_contactos.pdf"
+LINEAS_POR_PANTALLA = 20
+
+
 def ayuda():
-    """(Caja negra: pendiente de desarrollo)."""
-    mostrar_mensaje("FUNCIONALIDAD EN DESARROLLO")
+    """Opción 6: despliega en pantalla el manual de usuario (archivo de
+    texto en la carpeta del programa), de 20 líneas en 20 líneas.
+    Al final ofrece abrir la versión PDF del manual (con imágenes)."""
+    ruta = os.path.join(CARPETA_PROGRAMA, MANUAL_TXT)
+    try:
+        with open(ruta, encoding="utf-8") as archivo:
+            lineas = archivo.read().splitlines()
+    except OSError:
+        mostrar_mensaje("NO SE ENCONTRÓ EL ARCHIVO " + MANUAL_TXT)
+        return
+    for inicio in range(0, len(lineas), LINEAS_POR_PANTALLA):
+        mostrar_encabezado("AYUDA - MANUAL DE USUARIO")
+        for linea in lineas[inicio:inicio + LINEAS_POR_PANTALLA]:
+            print("  " + linea)
+        if inicio + LINEAS_POR_PANTALLA < len(lineas):
+            if input("\n  <Enter> siguiente página, S salir: ").strip() \
+                    .upper() == "S":
+                break
+    ruta_pdf = os.path.join(CARPETA_PROGRAMA, MANUAL_PDF)
+    if os.path.exists(ruta_pdf):
+        if input("\n  ¿Desea abrir el manual en PDF (con imágenes)? (SI/NO) "
+                 ).strip().upper() in ("SI", "SÍ"):
+            abrir_archivo(ruta_pdf)
+    else:
+        pausar()
 
 
 def acerca_de():
-    """(Caja negra: pendiente de desarrollo)."""
-    mostrar_mensaje("FUNCIONALIDAD EN DESARROLLO")
+    """Opción 7: muestra los datos del programa."""
+    mostrar_encabezado("ACERCA DE")
+    print(etiqueta("Programa") + NOMBRE_PROGRAMA)
+    print(etiqueta("Versión") + VERSION)
+    print(etiqueta("Fecha de creación") + FECHA_CREACION)
+    print(etiqueta("Autor") + AUTOR)
+    print(etiqueta("Curso") + "Taller de Programación")
+    print(etiqueta("Institución") + "Tecnológico de Costa Rica")
+    print(etiqueta("Lenguaje") + "Python 3.14")
+    pausar()
 
 
 # =============================================================================
