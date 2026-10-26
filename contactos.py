@@ -30,7 +30,7 @@
 import os
 import re
 import datetime
-import webbrowser
+from fpdf import FPDF        # biblioteca para crear PDF (pip install fpdf2)
 
 # ------------------------------- CONSTANTES ---------------------------------
 NOMBRE_PROGRAMA = "LISTA DIGITAL DE CONTACTOS"
@@ -43,9 +43,6 @@ TIPOS_TELEFONO = ("M", "Móvil", "C", "Casa", "T", "Trabajo", "O", "Otro")
 
 # Posición (índice) de cada dato dentro de un contacto
 TEL, AREA, TIPO, NOMBRE, CORREO, DIRECCION, FECHA, PASATIEMPOS, NOTAS = range(9)
-
-# Carpeta donde está el programa (ahí se guardan los PDF y está el manual)
-CARPETA_PROGRAMA = os.path.dirname(os.path.abspath(__file__))
 
 # ----------------------------- DATOS DE PRUEBA -------------------------------
 # Datos ya probados que se cargan al iniciar, para no tener que digitarlos
@@ -106,7 +103,7 @@ def etiqueta(texto):
     """Retorna la etiqueta de un dato alineada a 24 caracteres."""
     if len(texto) >= 24:
         return "  " + texto + " "
-    return "  " + texto.ljust(24)
+    return "  " + texto.ljust(24)    # ljust rellena con espacios a la derecha
 
 
 def mostrar_menu(subtitulo, opciones):
@@ -115,7 +112,7 @@ def mostrar_menu(subtitulo, opciones):
     Salida: la opción digitada por el usuario (str)."""
     mostrar_encabezado(subtitulo)
     for i in range(len(opciones)):
-        print(f"  {i + 1}. {opciones[i]}")
+        print("  " + str(i + 1) + ". " + opciones[i])
     print("  0. Fin")
     return input("\n  OPCIÓN ").strip()
 
@@ -407,19 +404,29 @@ def validar_correo(texto):
 def validar_fecha(texto):
     """Valida una fecha dd/mm/aaaa usando el módulo datetime.
     - Vacío o "0": no se tiene la fecha, retorna 0.
-    - Año 0000: no se conoce el año; se valida día y mes con un año
-      bisiesto (2000) para aceptar también el 29/02.
-    - Con año: no puede ser una fecha futura.
+    - Año 0000: no se conoce el año; se valida el día y el mes con el
+      año 2000 (bisiesto) para que también se acepte el 29/02.
+    - Con año: la fecha no puede ser futura.
     Salida: la fecha (str), 0, o None si no es válida."""
     if texto == "" or texto == "0":
         return 0
-    partes = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", texto)
-    if partes is None:
+    partes = texto.split("/")
+    if len(partes) != 3:
         return None
-    dia, mes, anno = int(partes[1]), int(partes[2]), int(partes[3])
+    if len(partes[0]) != 2 or len(partes[1]) != 2 or len(partes[2]) != 4:
+        return None
+    if not (partes[0].isdigit() and partes[1].isdigit()
+            and partes[2].isdigit()):
+        return None
+    dia = int(partes[0])
+    mes = int(partes[1])
+    anno = int(partes[2])
+    anno_prueba = anno
+    if anno == 0:
+        anno_prueba = 2000
     try:
-        fecha = datetime.date(anno if anno != 0 else 2000, mes, dia)
-    except ValueError:              # día o mes fuera de rango
+        fecha = datetime.date(anno_prueba, mes, dia)
+    except ValueError:              # el día o el mes no existen
         return None
     if anno != 0 and fecha > datetime.date.today():
         return None
@@ -428,7 +435,9 @@ def validar_fecha(texto):
 
 def texto_fecha(fecha):
     """Fecha para desplegar: "" cuando el dato es 0 (no se tiene)."""
-    return "" if fecha == 0 else fecha
+    if fecha == 0:
+        return ""
+    return fecha
 
 
 def leer_correo(nombre_dato, actual=None):
@@ -480,7 +489,9 @@ def leer_telefono(areas, configuracion):
         mostrar_error("EL TELÉFONO DEBE SER UN NÚMERO NATURAL DE 5 A 12 "
                       "DÍGITOS")
     area_omision = configuracion[0]
-    texto_omision = f" [{area_omision}]" if area_omision is not None else ""
+    texto_omision = ""
+    if area_omision is not None:
+        texto_omision = " [" + str(area_omision) + "]"
     while True:
         texto = input(etiqueta("Área" + texto_omision)).strip()
         if texto == "" and area_omision is not None:
@@ -887,8 +898,9 @@ def cumple_filtro(valor, patron):
     Sin % se exige el valor exacto. No distingue mayúsculas/minúsculas."""
     if patron == "":
         return True
-    return re.fullmatch(patron_a_regex(patron), str(valor),
-                        re.IGNORECASE | re.DOTALL) is not None
+    # se pasan ambos a minúscula para que "Castillo" sea igual a "CASTILLO"
+    expresion = patron_a_regex(patron.lower())
+    return re.fullmatch(expresion, str(valor).lower()) is not None
 
 
 def cumple_filtro_grupo(nombres_grupos, patron):
@@ -919,169 +931,60 @@ def filtrar_contactos(contactos, grupos, contactos_por_grupo, filtros):
 
 
 # ------------------- Generación del archivo PDF ------------------------------
-# El PDF se escribe directamente siguiendo la estructura del formato
-# (encabezado, objetos, tabla xref y trailer), sin bibliotecas externas.
-ANCHO_PAGINA, ALTO_PAGINA = 792, 612        # carta horizontal, en puntos
-MARGEN = 28
-TAMANO_LETRA = 6.5                          # letra Courier (ancho fijo)
-ANCHO_CARACTER = TAMANO_LETRA * 0.6         # en Courier cada letra = 0.6
-ALTO_LINEA = 8.5
-COLUMNAS_PDF = (("Nombre contacto", 24), ("Teléfono (área)", 17),
-                ("Tipo", 8), ("Correo electrónico", 26),
-                ("Dirección física", 28), ("F. nacim.", 10),
-                ("Pasatiempos", 28), ("Notas", 28))
+# Se usa la biblioteca fpdf2 (se instala con: pip install fpdf2).
+TITULOS_PDF = ("Nombre contacto", "Teléfono (área)", "Tipo",
+               "Correo electrónico", "Dirección física", "F. nacimiento",
+               "Pasatiempos", "Notas")
+ANCHOS_PDF = (38, 32, 15, 40, 40, 20, 37, 37)     # ancho de cada columna
 
 
-def escapar_pdf(texto):
-    """Escapa los caracteres especiales de los textos dentro de un PDF."""
-    return texto.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-
-
-def comando_texto(x, y, fuente, tamano, texto):
-    """Comando PDF para escribir un texto en la posición (x, y)."""
-    return (f"BT /{fuente} {tamano} Tf {x:.1f} {y:.1f} Td "
-            f"({escapar_pdf(texto)}) Tj ET\n")
-
-
-def comando_linea(x1, y1, x2, y2):
-    """Comando PDF para dibujar una línea gris."""
-    return f"0.6 G 0.4 w {x1:.1f} {y1:.1f} m {x2:.1f} {y2:.1f} l S 0 G\n"
-
-
-def partir_texto(texto, ancho):
-    """Divide un texto en líneas de máximo 'ancho' caracteres, sin cortar
-    palabras (salvo que una palabra sola sea más larga que el ancho)."""
-    lineas = []
-    actual = ""
-    for palabra in texto.split():
-        while len(palabra) > ancho:
-            if actual:
-                lineas.append(actual)
-                actual = ""
-            lineas.append(palabra[:ancho])
-            palabra = palabra[ancho:]
-        if actual == "":
-            actual = palabra
-        elif len(actual) + 1 + len(palabra) <= ancho:
-            actual += " " + palabra
-        else:
-            lineas.append(actual)
-            actual = palabra
-    if actual:
-        lineas.append(actual)
-    return lineas if lineas else [""]
-
-
-def encabezado_pagina_pdf(numero, texto_filtros, total_contactos):
-    """Dibuja título, filtros y títulos de columnas de una página.
-    Salida: (comandos, posición y donde empiezan las filas)."""
-    ahora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-    comandos = comando_texto(MARGEN, ALTO_PAGINA - 40, "F3", 15,
-                             NOMBRE_PROGRAMA + " - LISTA DE CONTACTOS")
-    comandos += comando_texto(MARGEN, ALTO_PAGINA - 56, "F1", 8,
-                              f"Emitido: {ahora}    Contactos: "
-                              f"{total_contactos}    Página {numero}")
-    comandos += comando_texto(MARGEN, ALTO_PAGINA - 68, "F1", 8,
-                              "Filtros: " + texto_filtros)
-    y = ALTO_PAGINA - 88
-    x = MARGEN
-    for titulo, ancho in COLUMNAS_PDF:
-        comandos += comando_texto(x, y, "F2", TAMANO_LETRA, titulo)
-        x += (ancho + 1) * ANCHO_CARACTER
-    comandos += comando_linea(MARGEN, y - 3, ANCHO_PAGINA - MARGEN, y - 3)
-    return comandos, y - ALTO_LINEA - 4
-
-
-def generar_paginas_pdf(filas, texto_filtros):
-    """Recibe las filas (listas de 8 textos) y arma los comandos de dibujo
-    de cada página; si una fila no cabe se crea una página nueva.
-    Salida: lista con los comandos de cada página."""
-    paginas = []
-    comandos, y = encabezado_pagina_pdf(1, texto_filtros, len(filas))
-    if not filas:
-        comandos += comando_texto(MARGEN, y, "F1", 9, "No hay contactos que "
-                                  "cumplan con los filtros indicados.")
-    for fila in filas:
-        celdas = []
-        for i in range(len(COLUMNAS_PDF)):
-            celdas.append(partir_texto(fila[i], COLUMNAS_PDF[i][1]))
-        lineas_fila = max(len(celda) for celda in celdas)
-        if y - lineas_fila * ALTO_LINEA < MARGEN:          # no cabe
-            paginas.append(comandos)
-            comandos, y = encabezado_pagina_pdf(len(paginas) + 1,
-                                                texto_filtros, len(filas))
-        x = MARGEN
-        for i in range(len(celdas)):
-            for j in range(len(celdas[i])):
-                comandos += comando_texto(x, y - j * ALTO_LINEA, "F1",
-                                          TAMANO_LETRA, celdas[i][j])
-            x += (COLUMNAS_PDF[i][1] + 1) * ANCHO_CARACTER
-        y -= lineas_fila * ALTO_LINEA
-        comandos += comando_linea(MARGEN, y + 5, ANCHO_PAGINA - MARGEN, y + 5)
-        y -= 3
-    paginas.append(comandos)
-    return paginas
-
-
-def escribir_pdf(ruta, paginas):
-    """Escribe el archivo PDF. Objetos: 1 catálogo, 2 árbol de páginas,
-    3-5 fuentes y, por cada página, su objeto página y su contenido.
-    Al final se escribe la tabla xref con la posición de cada objeto."""
-    cantidad = len(paginas)
-    hijos = " ".join(f"{6 + 2 * i} 0 R" for i in range(cantidad))
-    objetos = [b"<< /Type /Catalog /Pages 2 0 R >>",
-               f"<< /Type /Pages /Kids [{hijos}] /Count {cantidad} >>"
-               .encode()]
-    for fuente in ("Courier", "Courier-Bold", "Helvetica-Bold"):
-        objetos.append(f"<< /Type /Font /Subtype /Type1 /BaseFont /{fuente} "
-                       f"/Encoding /WinAnsiEncoding >>".encode())
-    for i in range(cantidad):
-        contenido = paginas[i].encode("cp1252", errors="replace")
-        objetos.append(
-            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {ANCHO_PAGINA} "
-            f"{ALTO_PAGINA}] /Resources << /Font << /F1 3 0 R /F2 4 0 R "
-            f"/F3 5 0 R >> >> /Contents {7 + 2 * i} 0 R >>".encode())
-        objetos.append(f"<< /Length {len(contenido)} >>\nstream\n".encode()
-                       + contenido + b"\nendstream")
-    salida = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-    posiciones = []
-    for i in range(len(objetos)):
-        posiciones.append(len(salida))
-        salida += f"{i + 1} 0 obj\n".encode() + objetos[i] + b"\nendobj\n"
-    inicio_xref = len(salida)
-    salida += f"xref\n0 {len(objetos) + 1}\n0000000000 65535 f \n".encode()
-    for posicion in posiciones:
-        salida += f"{posicion:010d} 00000 n \n".encode()
-    salida += (f"trailer\n<< /Size {len(objetos) + 1} /Root 1 0 R >>\n"
-               f"startxref\n{inicio_xref}\n%%EOF\n").encode()
-    with open(ruta, "wb") as archivo:
-        archivo.write(salida)
-
-
-def abrir_archivo(ruta):
-    """Intenta abrir un archivo con el programa predeterminado del sistema."""
-    try:
-        if os.name == "nt":
-            os.startfile(ruta)
-        else:
-            webbrowser.open("file://" + ruta)
-    except OSError:
-        pass
+def abrir_archivo(nombre_archivo):
+    """Abre un archivo con el programa predeterminado (solo en Windows)."""
+    if os.name == "nt":
+        os.startfile(nombre_archivo)
 
 
 def emitir_pdf(seleccionados, areas, texto_filtros):
-    """Arma las filas del listado, escribe el PDF y retorna su ruta."""
-    filas = []
-    for c in seleccionados:
-        filas.append([c[NOMBRE], f"{c[TEL]} ({c[AREA]} "
-                      f"{nombre_area(areas, c[AREA])})",
-                      descripcion_tipo(c[TIPO]), c[CORREO], c[DIRECCION],
-                      texto_fecha(c[FECHA]), c[PASATIEMPOS], c[NOTAS]])
-    nombre = ("lista_contactos_" +
-              datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf")
-    ruta = os.path.join(CARPETA_PROGRAMA, nombre)
-    escribir_pdf(ruta, generar_paginas_pdf(filas, texto_filtros))
-    return ruta
+    """Crea el archivo PDF con una tabla de los contactos seleccionados.
+    Entradas: lista de contactos, lista areas y texto de los filtros.
+    Salida: nombre del archivo PDF creado."""
+    pdf = FPDF(orientation="L", unit="mm", format="Letter")  # horizontal
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, NOMBRE_PROGRAMA + " - LISTA DE CONTACTOS",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    ahora = datetime.datetime.now()
+    pdf.cell(0, 5, "Emitido: " + ahora.strftime("%d/%m/%Y %H:%M") +
+             "     Cantidad de contactos: " + str(len(seleccionados)),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, "Filtros: " + texto_filtros, new_x="LMARGIN",
+             new_y="NEXT")
+    pdf.ln(3)
+    if len(seleccionados) == 0:
+        pdf.cell(0, 6, "No hay contactos que cumplan con los filtros.")
+    else:
+        pdf.set_font("Helvetica", "", 7)
+        # cada fila de la tabla es un contacto; la primera fila son títulos
+        with pdf.table(col_widths=ANCHOS_PDF, text_align="LEFT") as tabla:
+            fila = tabla.row()
+            for titulo in TITULOS_PDF:
+                fila.cell(titulo)
+            for contacto in seleccionados:
+                fila = tabla.row()
+                fila.cell(contacto[NOMBRE])
+                fila.cell(str(contacto[TEL]) + " (" + str(contacto[AREA]) +
+                          " " + nombre_area(areas, contacto[AREA]) + ")")
+                fila.cell(descripcion_tipo(contacto[TIPO]))
+                fila.cell(contacto[CORREO])
+                fila.cell(contacto[DIRECCION])
+                fila.cell(texto_fecha(contacto[FECHA]))
+                fila.cell(contacto[PASATIEMPOS])
+                fila.cell(contacto[NOTAS])
+    nombre_archivo = ("lista_contactos_" + ahora.strftime("%Y%m%d_%H%M%S")
+                      + ".pdf")
+    pdf.output(nombre_archivo)
+    return nombre_archivo
 
 
 def lista_contactos(contactos, areas, grupos, contactos_por_grupo):
@@ -1109,11 +1012,14 @@ def lista_contactos(contactos, areas, grupos, contactos_por_grupo):
         for i in range(len(nombres)):
             if filtros[i] != "":
                 partes.append(f"{nombres[i]} = '{filtros[i]}'")
-        texto_filtros = "; ".join(partes) if partes else "ninguno (todos)"
-        ruta = emitir_pdf(seleccionados, areas, texto_filtros)
-        print(f"\n  Contactos que cumplen los filtros: {len(seleccionados)}")
-        print("  Listado emitido en: " + ruta)
-        abrir_archivo(ruta)
+        texto_filtros = "ninguno (todos los contactos)"
+        if len(partes) > 0:
+            texto_filtros = "; ".join(partes)
+        nombre_archivo = emitir_pdf(seleccionados, areas, texto_filtros)
+        print("\n  Contactos que cumplen los filtros: " +
+              str(len(seleccionados)))
+        print("  Listado emitido en el archivo: " + nombre_archivo)
+        abrir_archivo(nombre_archivo)
         pausar()
 
 
@@ -1129,9 +1035,8 @@ def ayuda():
     """Opción 6: despliega en pantalla el manual de usuario (archivo de
     texto en la carpeta del programa), de 20 líneas en 20 líneas.
     Al final ofrece abrir la versión PDF del manual (con imágenes)."""
-    ruta = os.path.join(CARPETA_PROGRAMA, MANUAL_TXT)
     try:
-        with open(ruta, encoding="utf-8") as archivo:
+        with open(MANUAL_TXT, encoding="utf-8") as archivo:
             lineas = archivo.read().splitlines()
     except OSError:
         mostrar_mensaje("NO SE ENCONTRÓ EL ARCHIVO " + MANUAL_TXT)
@@ -1141,14 +1046,14 @@ def ayuda():
         for linea in lineas[inicio:inicio + LINEAS_POR_PANTALLA]:
             print("  " + linea)
         if inicio + LINEAS_POR_PANTALLA < len(lineas):
-            if input("\n  <Enter> siguiente página, S salir: ").strip() \
-                    .upper() == "S":
+            respuesta = input("\n  <Enter> siguiente página, S salir: ")
+            if respuesta.strip().upper() == "S":
                 break
-    ruta_pdf = os.path.join(CARPETA_PROGRAMA, MANUAL_PDF)
-    if os.path.exists(ruta_pdf):
-        if input("\n  ¿Desea abrir el manual en PDF (con imágenes)? (SI/NO) "
-                 ).strip().upper() in ("SI", "SÍ"):
-            abrir_archivo(ruta_pdf)
+    if os.path.exists(MANUAL_PDF):
+        respuesta = input("\n  ¿Desea abrir el manual en PDF (con "
+                          "imágenes)? (SI/NO) ")
+        if respuesta.strip().upper() in ("SI", "SÍ"):
+            abrir_archivo(MANUAL_PDF)
     else:
         pausar()
 
@@ -1172,11 +1077,16 @@ def acerca_de():
 def main():
     """Crea las estructuras de datos, despliega el menú principal y llama a
     cada funcionalidad según la opción escogida (estructura match-case)."""
+    # Se copian los datos de prueba para no modificar las constantes
     areas = list(AREAS_PRUEBA)
     configuracion = [None, None]   # [área por omisión, tipo por omisión]
-    contactos = [list(contacto) for contacto in CONTACTOS_PRUEBA]
+    contactos = []
+    for contacto in CONTACTOS_PRUEBA:
+        contactos.append(list(contacto))
     grupos = list(GRUPOS_PRUEBA)
-    contactos_por_grupo = [list(lista) for lista in CONTACTOS_POR_GRUPO_PRUEBA]
+    contactos_por_grupo = []
+    for lista in CONTACTOS_POR_GRUPO_PRUEBA:
+        contactos_por_grupo.append(list(lista))
 
     while True:
         opcion = mostrar_menu("MENÚ PRINCIPAL", [

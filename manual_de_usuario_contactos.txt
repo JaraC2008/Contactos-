@@ -1,7 +1,9 @@
 MANUAL DE USUARIO - LISTA DIGITAL DE CONTACTOS (versión 1.0)
 
 1. INICIO DEL PROGRAMA
-   Ejecute contactos.py con Python 3.14 o superior. Aparece el menú
+   Requisito: instalar una vez la biblioteca fpdf2 con: pip install fpdf2
+   Abra la carpeta contactos y ejecute contactos.py con Python 3.14 o
+   superior (debe ejecutarse desde esa carpeta). Aparece el menú
    principal. Digite el número de la opción y presione <Enter>.
    El programa inicia con datos de ejemplo (áreas, contactos y grupos).
 
