@@ -322,9 +322,67 @@ def registrar_areas(areas, contactos, configuracion):
 # =============================================================================
 #                 2. CONFIGURACIÓN DE LA LISTA DE CONTACTOS
 # =============================================================================
+def es_tipo_valido(codigo):
+    """True si el código existe en la tupla TIPOS_TELEFONO.
+    Los códigos están en las posiciones pares de la tupla."""
+    for i in range(0, len(TIPOS_TELEFONO), 2):
+        if TIPOS_TELEFONO[i] == codigo:
+            return True
+    return False
+
+
+def descripcion_tipo(codigo):
+    """Retorna la descripción de un tipo de teléfono (ej. M -> Móvil)."""
+    for i in range(0, len(TIPOS_TELEFONO), 2):
+        if TIPOS_TELEFONO[i] == codigo:
+            return TIPOS_TELEFONO[i + 1]
+    return ""
+
+
+def texto_tipos():
+    """Arma el texto 'M:Móvil, C:Casa, ...' a partir de TIPOS_TELEFONO."""
+    partes = []
+    for i in range(0, len(TIPOS_TELEFONO), 2):
+        partes.append(TIPOS_TELEFONO[i] + ":" + TIPOS_TELEFONO[i + 1])
+    return ", ".join(partes)
+
+
+def leer_tipo_telefono(nombre_dato, omision):
+    """Pide un tipo de teléfono válido. Si omision no es None y el usuario
+    da <Enter>, retorna el valor por omisión."""
+    while True:
+        tipo = input(etiqueta(nombre_dato)).strip().upper()
+        if tipo == "" and omision is not None:
+            return omision
+        if es_tipo_valido(tipo):
+            return tipo
+        mostrar_error("ESTE TIPO DE TELÉFONO NO EXISTE, NO SE PUEDE "
+                      "SELECCIONAR")
+
+
 def configurar_lista(areas, configuracion):
-    """(Caja negra: pendiente de desarrollo)."""
-    mostrar_mensaje("FUNCIONALIDAD EN DESARROLLO")
+    """Opción 2: establece el área y el tipo de teléfono por omisión.
+    Modifica la lista configuracion solo si el usuario acepta."""
+    mostrar_encabezado("CONFIGURACIÓN DE LA LISTA DE CONTACTOS")
+    if configuracion[0] is not None:
+        print(f"  Configuración actual: área {configuracion[0]} "
+              f"({nombre_area(areas, configuracion[0])}), tipo "
+              f"{configuracion[1]} ({descripcion_tipo(configuracion[1])})")
+    print("  (Digite C en Área por omisión para regresar al menú anterior)\n")
+    while True:
+        codigo = leer_codigo_area("Área por omisión")
+        if codigo is None:
+            return
+        if buscar_area(areas, codigo) != -1:
+            break
+        mostrar_error("ESTA ÁREA NO ESTÁ REGISTRADA, NO SE PUEDE SELECCIONAR")
+    print(etiqueta("") + nombre_area(areas, codigo))
+    print("  Tipo de teléfono por omisión (" + texto_tipos() + ")")
+    tipo = leer_tipo_telefono("Tipo por omisión", None)
+    if leer_opcion_aceptar_cancelar():
+        configuracion[0] = codigo
+        configuracion[1] = tipo
+        mostrar_mensaje("CONFIGURACIÓN GUARDADA")
 
 
 # =============================================================================
