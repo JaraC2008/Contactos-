@@ -163,9 +163,160 @@ def leer_texto(nombre_dato, minimo, maximo, actual=None):
 # =============================================================================
 #                          1. REGISTRAR ÁREAS
 # =============================================================================
+def buscar_area(areas, codigo):
+    """Busca un código en la lista areas.
+    Salida: índice del área en la lista, o -1 si no existe."""
+    for i in range(len(areas)):
+        if areas[i][0] == codigo:
+            return i
+    return -1
+
+
+def nombre_area(areas, codigo):
+    """Retorna el nombre de un área, o "" si el código no existe."""
+    indice = buscar_area(areas, codigo)
+    if indice == -1:
+        return ""
+    return areas[indice][1]
+
+
+def validar_codigo_area(texto):
+    """Valida que el texto sea un entero entre 1 y 999.
+    Salida: el código como entero, o None si no es válido."""
+    if texto.isdigit():
+        codigo = int(texto)
+        if 1 <= codigo <= 999:
+            return codigo
+    return None
+
+
+def leer_codigo_area(nombre_dato):
+    """Pide un código de área válido (1 a 999).
+    Salida: el código (int) o None si el usuario digita C (cancelar)."""
+    while True:
+        texto = input(etiqueta(nombre_dato)).strip()
+        if texto.upper() == "C":
+            return None
+        codigo = validar_codigo_area(texto)
+        if codigo is not None:
+            return codigo
+        mostrar_error("EL ÁREA DEBE SER UN NÚMERO ENTERO ENTRE 1 Y 999")
+
+
+def leer_area_registrada(areas, mensaje_no_existe):
+    """Pide un código de área hasta que exista en la lista.
+    Salida: índice del área en la lista, o -1 si el usuario cancela."""
+    while True:
+        codigo = leer_codigo_area("Área")
+        if codigo is None:
+            return -1
+        indice = buscar_area(areas, codigo)
+        if indice != -1:
+            return indice
+        mostrar_error(mensaje_no_existe)
+
+
+def area_tiene_contactos(contactos, codigo):
+    """Integridad referencial: True si algún contacto usa el área."""
+    for contacto in contactos:
+        if contacto[AREA] == codigo:
+            return True
+    return False
+
+
+def agregar_areas(areas):
+    """Opción 1.1: agrega áreas nuevas (código único) a la lista areas."""
+    while True:
+        mostrar_encabezado("REGISTRAR ÁREAS: AGREGAR")
+        print("  (Digite C en Área para regresar al menú anterior)\n")
+        while True:
+            codigo = leer_codigo_area("Área")
+            if codigo is None:
+                return
+            if buscar_area(areas, codigo) == -1:
+                break
+            mostrar_error("ESTA ÁREA YA ESTÁ REGISTRADA, NO SE PUEDE AGREGAR")
+        nombre = leer_texto("Nombre del área", 1, 40)
+        if leer_opcion_aceptar_cancelar():
+            areas.append((codigo, nombre))
+            mostrar_mensaje("ÁREA AGREGADA")
+
+
+def consultar_areas(areas):
+    """Opción 1.2: muestra el nombre de un área registrada."""
+    while True:
+        mostrar_encabezado("REGISTRAR ÁREAS: CONSULTAR")
+        print("  (Digite C en Área para regresar al menú anterior)\n")
+        indice = leer_area_registrada(
+            areas, "ESTA ÁREA NO ESTÁ REGISTRADA, NO SE PUEDE CONSULTAR")
+        if indice == -1:
+            return
+        print(etiqueta("Nombre del área") + areas[indice][1])
+        leer_aceptar()
+
+
+def modificar_areas(areas):
+    """Opción 1.3: cambia el nombre de un área (<Enter> lo deja igual)."""
+    while True:
+        mostrar_encabezado("REGISTRAR ÁREAS: MODIFICAR")
+        print("  (Digite C en Área para regresar al menú anterior)\n")
+        indice = leer_area_registrada(
+            areas, "ESTA ÁREA NO ESTÁ REGISTRADA, NO SE PUEDE MODIFICAR")
+        if indice == -1:
+            return
+        codigo, nombre = areas[indice]
+        print(etiqueta("Nombre del área") + nombre)
+        nuevo_nombre = leer_texto("MODIFICACIÓN", 1, 40, nombre)
+        if leer_opcion_aceptar_cancelar():
+            areas[indice] = (codigo, nuevo_nombre)   # las tuplas no cambian:
+            mostrar_mensaje("ÁREA MODIFICADA")       # se reemplaza la tupla
+
+
+def eliminar_areas(areas, contactos, configuracion):
+    """Opción 1.4: elimina un área que no esté siendo usada por contactos
+    ni por la configuración (integridad referencial)."""
+    while True:
+        mostrar_encabezado("REGISTRAR ÁREAS: ELIMINAR")
+        print("  (Digite C en Área para regresar al menú anterior)\n")
+        indice = leer_area_registrada(
+            areas, "ESTA ÁREA NO ESTÁ REGISTRADA, NO SE PUEDE ELIMINAR")
+        if indice == -1:
+            return
+        codigo = areas[indice][0]
+        print(etiqueta("Nombre del área") + areas[indice][1])
+        if not leer_opcion_aceptar_cancelar():
+            continue
+        if area_tiene_contactos(contactos, codigo):
+            mostrar_mensaje("EN ESTA ÁREA HAY CONTACTOS REGISTRADOS, "
+                            "NO SE PUEDE ELIMINAR")
+        elif configuracion[0] == codigo:
+            mostrar_mensaje("ESTA ÁREA ES EL ÁREA POR OMISIÓN DE LA "
+                            "CONFIGURACIÓN, NO SE PUEDE ELIMINAR")
+        elif confirmar_eliminacion():
+            del areas[indice]
+            mostrar_mensaje("ÁREA ELIMINADA")
+
+
 def registrar_areas(areas, contactos, configuracion):
-    """(Caja negra: pendiente de desarrollo)."""
-    mostrar_mensaje("FUNCIONALIDAD EN DESARROLLO")
+    """Opción 1 del menú principal: submenú de mantenimiento de áreas."""
+    while True:
+        opcion = mostrar_menu("REGISTRAR ÁREAS", [
+            "Agregar áreas", "Consultar áreas", "Modificar áreas",
+            "Eliminar áreas"])
+        match opcion:
+            case "1":
+                agregar_areas(areas)
+            case "2":
+                consultar_areas(areas)
+            case "3":
+                modificar_areas(areas)
+            case "4":
+                eliminar_areas(areas, contactos, configuracion)
+            case "0":
+                return
+            case _:
+                mostrar_error("ESTA OPCIÓN NO EXISTE EN EL MENÚ")
+                pausar()
 
 
 # =============================================================================
