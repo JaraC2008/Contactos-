@@ -104,6 +104,8 @@ def mostrar_mensaje(mensaje):
 
 def etiqueta(texto):
     """Retorna la etiqueta de un dato alineada a 24 caracteres."""
+    if len(texto) >= 24:
+        return "  " + texto + " "
     return "  " + texto.ljust(24)
 
 
