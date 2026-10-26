@@ -867,9 +867,252 @@ def administrar_grupos(grupos, contactos_por_grupo, contactos, areas,
 # =============================================================================
 #                   5. LISTA DE CONTACTOS (ARCHIVO PDF)
 # =============================================================================
+# ----------------------- Filtros con comodín % --------------------------------
+def patron_a_regex(patron):
+    """Convierte un filtro con comodines % en una expresión regular.
+    Se parte el filtro por cada %, cada parte se 'escapa' (para que
+    caracteres como . o ( no tengan significado especial) y las partes se
+    unen con '.*', que en regex significa 'cero o más caracteres'.
+    Ejemplo: 'william%mata' -> 'william.*mata'."""
+    partes = patron.split("%")
+    for i in range(len(partes)):
+        partes[i] = re.escape(partes[i])
+    return ".*".join(partes)
+
+
+def cumple_filtro(valor, patron):
+    """True si el valor cumple el filtro. Filtro vacío = cualquier valor.
+    Sin % se exige el valor exacto. No distingue mayúsculas/minúsculas."""
+    if patron == "":
+        return True
+    return re.fullmatch(patron_a_regex(patron), str(valor),
+                        re.IGNORECASE | re.DOTALL) is not None
+
+
+def cumple_filtro_grupo(nombres_grupos, patron):
+    """True si alguno de los grupos del contacto cumple el filtro."""
+    if patron == "":
+        return True
+    for nombre in nombres_grupos:
+        if cumple_filtro(nombre, patron):
+            return True
+    return False
+
+
+def filtrar_contactos(contactos, grupos, contactos_por_grupo, filtros):
+    """Retorna los contactos que cumplen TODOS los filtros.
+    filtros = (nombre, telefono, area, fecha, pasatiempos, grupo)."""
+    resultado = []
+    for contacto in contactos:
+        sus_grupos = grupos_de_contacto(grupos, contactos_por_grupo,
+                                        contacto[TEL], contacto[AREA])
+        if (cumple_filtro(contacto[NOMBRE], filtros[0])
+                and cumple_filtro(contacto[TEL], filtros[1])
+                and cumple_filtro(contacto[AREA], filtros[2])
+                and cumple_filtro(texto_fecha(contacto[FECHA]), filtros[3])
+                and cumple_filtro(contacto[PASATIEMPOS], filtros[4])
+                and cumple_filtro_grupo(sus_grupos, filtros[5])):
+            resultado.append(contacto)
+    return resultado
+
+
+# ------------------- Generación del archivo PDF ------------------------------
+# El PDF se escribe directamente siguiendo la estructura del formato
+# (encabezado, objetos, tabla xref y trailer), sin bibliotecas externas.
+ANCHO_PAGINA, ALTO_PAGINA = 792, 612        # carta horizontal, en puntos
+MARGEN = 28
+TAMANO_LETRA = 6.5                          # letra Courier (ancho fijo)
+ANCHO_CARACTER = TAMANO_LETRA * 0.6         # en Courier cada letra = 0.6
+ALTO_LINEA = 8.5
+COLUMNAS_PDF = (("Nombre contacto", 24), ("Teléfono (área)", 17),
+                ("Tipo", 8), ("Correo electrónico", 26),
+                ("Dirección física", 28), ("F. nacim.", 10),
+                ("Pasatiempos", 28), ("Notas", 28))
+
+
+def escapar_pdf(texto):
+    """Escapa los caracteres especiales de los textos dentro de un PDF."""
+    return texto.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def comando_texto(x, y, fuente, tamano, texto):
+    """Comando PDF para escribir un texto en la posición (x, y)."""
+    return (f"BT /{fuente} {tamano} Tf {x:.1f} {y:.1f} Td "
+            f"({escapar_pdf(texto)}) Tj ET\n")
+
+
+def comando_linea(x1, y1, x2, y2):
+    """Comando PDF para dibujar una línea gris."""
+    return f"0.6 G 0.4 w {x1:.1f} {y1:.1f} m {x2:.1f} {y2:.1f} l S 0 G\n"
+
+
+def partir_texto(texto, ancho):
+    """Divide un texto en líneas de máximo 'ancho' caracteres, sin cortar
+    palabras (salvo que una palabra sola sea más larga que el ancho)."""
+    lineas = []
+    actual = ""
+    for palabra in texto.split():
+        while len(palabra) > ancho:
+            if actual:
+                lineas.append(actual)
+                actual = ""
+            lineas.append(palabra[:ancho])
+            palabra = palabra[ancho:]
+        if actual == "":
+            actual = palabra
+        elif len(actual) + 1 + len(palabra) <= ancho:
+            actual += " " + palabra
+        else:
+            lineas.append(actual)
+            actual = palabra
+    if actual:
+        lineas.append(actual)
+    return lineas if lineas else [""]
+
+
+def encabezado_pagina_pdf(numero, texto_filtros, total_contactos):
+    """Dibuja título, filtros y títulos de columnas de una página.
+    Salida: (comandos, posición y donde empiezan las filas)."""
+    ahora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    comandos = comando_texto(MARGEN, ALTO_PAGINA - 40, "F3", 15,
+                             NOMBRE_PROGRAMA + " - LISTA DE CONTACTOS")
+    comandos += comando_texto(MARGEN, ALTO_PAGINA - 56, "F1", 8,
+                              f"Emitido: {ahora}    Contactos: "
+                              f"{total_contactos}    Página {numero}")
+    comandos += comando_texto(MARGEN, ALTO_PAGINA - 68, "F1", 8,
+                              "Filtros: " + texto_filtros)
+    y = ALTO_PAGINA - 88
+    x = MARGEN
+    for titulo, ancho in COLUMNAS_PDF:
+        comandos += comando_texto(x, y, "F2", TAMANO_LETRA, titulo)
+        x += (ancho + 1) * ANCHO_CARACTER
+    comandos += comando_linea(MARGEN, y - 3, ANCHO_PAGINA - MARGEN, y - 3)
+    return comandos, y - ALTO_LINEA - 4
+
+
+def generar_paginas_pdf(filas, texto_filtros):
+    """Recibe las filas (listas de 8 textos) y arma los comandos de dibujo
+    de cada página; si una fila no cabe se crea una página nueva.
+    Salida: lista con los comandos de cada página."""
+    paginas = []
+    comandos, y = encabezado_pagina_pdf(1, texto_filtros, len(filas))
+    if not filas:
+        comandos += comando_texto(MARGEN, y, "F1", 9, "No hay contactos que "
+                                  "cumplan con los filtros indicados.")
+    for fila in filas:
+        celdas = []
+        for i in range(len(COLUMNAS_PDF)):
+            celdas.append(partir_texto(fila[i], COLUMNAS_PDF[i][1]))
+        lineas_fila = max(len(celda) for celda in celdas)
+        if y - lineas_fila * ALTO_LINEA < MARGEN:          # no cabe
+            paginas.append(comandos)
+            comandos, y = encabezado_pagina_pdf(len(paginas) + 1,
+                                                texto_filtros, len(filas))
+        x = MARGEN
+        for i in range(len(celdas)):
+            for j in range(len(celdas[i])):
+                comandos += comando_texto(x, y - j * ALTO_LINEA, "F1",
+                                          TAMANO_LETRA, celdas[i][j])
+            x += (COLUMNAS_PDF[i][1] + 1) * ANCHO_CARACTER
+        y -= lineas_fila * ALTO_LINEA
+        comandos += comando_linea(MARGEN, y + 5, ANCHO_PAGINA - MARGEN, y + 5)
+        y -= 3
+    paginas.append(comandos)
+    return paginas
+
+
+def escribir_pdf(ruta, paginas):
+    """Escribe el archivo PDF. Objetos: 1 catálogo, 2 árbol de páginas,
+    3-5 fuentes y, por cada página, su objeto página y su contenido.
+    Al final se escribe la tabla xref con la posición de cada objeto."""
+    cantidad = len(paginas)
+    hijos = " ".join(f"{6 + 2 * i} 0 R" for i in range(cantidad))
+    objetos = [b"<< /Type /Catalog /Pages 2 0 R >>",
+               f"<< /Type /Pages /Kids [{hijos}] /Count {cantidad} >>"
+               .encode()]
+    for fuente in ("Courier", "Courier-Bold", "Helvetica-Bold"):
+        objetos.append(f"<< /Type /Font /Subtype /Type1 /BaseFont /{fuente} "
+                       f"/Encoding /WinAnsiEncoding >>".encode())
+    for i in range(cantidad):
+        contenido = paginas[i].encode("cp1252", errors="replace")
+        objetos.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {ANCHO_PAGINA} "
+            f"{ALTO_PAGINA}] /Resources << /Font << /F1 3 0 R /F2 4 0 R "
+            f"/F3 5 0 R >> >> /Contents {7 + 2 * i} 0 R >>".encode())
+        objetos.append(f"<< /Length {len(contenido)} >>\nstream\n".encode()
+                       + contenido + b"\nendstream")
+    salida = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    posiciones = []
+    for i in range(len(objetos)):
+        posiciones.append(len(salida))
+        salida += f"{i + 1} 0 obj\n".encode() + objetos[i] + b"\nendobj\n"
+    inicio_xref = len(salida)
+    salida += f"xref\n0 {len(objetos) + 1}\n0000000000 65535 f \n".encode()
+    for posicion in posiciones:
+        salida += f"{posicion:010d} 00000 n \n".encode()
+    salida += (f"trailer\n<< /Size {len(objetos) + 1} /Root 1 0 R >>\n"
+               f"startxref\n{inicio_xref}\n%%EOF\n").encode()
+    with open(ruta, "wb") as archivo:
+        archivo.write(salida)
+
+
+def abrir_archivo(ruta):
+    """Intenta abrir un archivo con el programa predeterminado del sistema."""
+    try:
+        if os.name == "nt":
+            os.startfile(ruta)
+        else:
+            webbrowser.open("file://" + ruta)
+    except OSError:
+        pass
+
+
+def emitir_pdf(seleccionados, areas, texto_filtros):
+    """Arma las filas del listado, escribe el PDF y retorna su ruta."""
+    filas = []
+    for c in seleccionados:
+        filas.append([c[NOMBRE], f"{c[TEL]} ({c[AREA]} "
+                      f"{nombre_area(areas, c[AREA])})",
+                      descripcion_tipo(c[TIPO]), c[CORREO], c[DIRECCION],
+                      texto_fecha(c[FECHA]), c[PASATIEMPOS], c[NOTAS]])
+    nombre = ("lista_contactos_" +
+              datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".pdf")
+    ruta = os.path.join(CARPETA_PROGRAMA, nombre)
+    escribir_pdf(ruta, generar_paginas_pdf(filas, texto_filtros))
+    return ruta
+
+
 def lista_contactos(contactos, areas, grupos, contactos_por_grupo):
-    """(Caja negra: pendiente de desarrollo)."""
-    mostrar_mensaje("FUNCIONALIDAD EN DESARROLLO")
+    """Opción 5: pide los 6 filtros y emite en PDF los contactos que los
+    cumplen todos. CANCELAR vuelve a mostrar la pantalla con los filtros
+    vacíos; C en el primer filtro regresa al menú principal."""
+    nombres = ("Nombre contacto", "Teléfono", "Área", "Fecha de nacimiento",
+               "Pasatiempos", "Grupo")
+    while True:
+        mostrar_encabezado("LISTA DE CONTACTOS")
+        print("  Deje un filtro vacío para aceptar cualquier valor. Use % como")
+        print("  comodín (cero o más caracteres). Ej.: %castillo%")
+        print("  (Digite solo C en Nombre contacto para regresar al menú)\n")
+        print("  FILTROS:")
+        filtros = []
+        for nombre in nombres:
+            filtros.append(input(etiqueta(nombre)).strip())
+            if len(filtros) == 1 and filtros[0].upper() == "C":
+                return
+        if not leer_opcion_aceptar_cancelar():
+            continue
+        seleccionados = filtrar_contactos(contactos, grupos,
+                                          contactos_por_grupo, filtros)
+        partes = []
+        for i in range(len(nombres)):
+            if filtros[i] != "":
+                partes.append(f"{nombres[i]} = '{filtros[i]}'")
+        texto_filtros = "; ".join(partes) if partes else "ninguno (todos)"
+        ruta = emitir_pdf(seleccionados, areas, texto_filtros)
+        print(f"\n  Contactos que cumplen los filtros: {len(seleccionados)}")
+        print("  Listado emitido en: " + ruta)
+        abrir_archivo(ruta)
+        pausar()
 
 
 # =============================================================================
